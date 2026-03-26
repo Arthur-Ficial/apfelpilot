@@ -10,12 +10,14 @@ from apfelpilot import __version__
 @click.group(invoke_without_command=True)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--version", "-v", is_flag=True, help="Show version")
+@click.option("--interactive", "-i", is_flag=True, help="Interactive mode")
 @click.pass_context
-def main(ctx, yes, version):
+def main(ctx, yes, version, interactive):
     """apfelpilot - self-evolving Mac agent powered by apfel.
 
     \b
     Run a task:   apfelpilot "organize my Downloads"
+    Interactive:  apfelpilot -i
     List tools:   apfelpilot tools
     Show history: apfelpilot history
     """
@@ -26,12 +28,20 @@ def main(ctx, yes, version):
     ctx.ensure_object(dict)
     ctx.obj["yes"] = yes
 
+    if interactive:
+        from apfelpilot.interactive import run_interactive
+        run_interactive(auto_confirm=yes)
+        return
+
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
 
 @main.command(name="run", hidden=True)
 @click.argument("task")
 @click.pass_context
 def run_cmd(ctx, task):
-    """Run a task (internal - called via entry point wrapper)."""
+    """Run a task."""
     from apfelpilot.loop import run_task
     yes = ctx.obj.get("yes", False) if ctx.obj else False
     run_task(task, auto_confirm=yes)
@@ -81,17 +91,16 @@ def history(last):
         ts = entry.get("ts", "")[:19].replace("T", " ")
         duration = entry.get("duration_ms", 0)
 
-        args_str = ", ".join(f"{k}={v[:50]}" for k, v in args.items())
+        if isinstance(args, dict):
+            args_str = ", ".join(f"{k}={v[:50]}" for k, v in args.items())
+        else:
+            args_str = str(args)[:100]
         click.echo(f"    [{step}] {tool}({args_str}) - {duration}ms - {ts}")
     click.echo()
 
 
 def entry_point():
-    """Entry point that routes tasks vs subcommands.
-
-    If the first non-flag arg is not a known subcommand, treat it as a task.
-    This allows: apfelpilot "organize files" without a 'run' subcommand.
-    """
+    """Entry point that routes tasks vs subcommands."""
     known = {"tools", "history", "run"}
     args = sys.argv[1:]
 
@@ -104,7 +113,6 @@ def entry_point():
 
     if first_arg and first_arg not in known:
         # Insert 'run' subcommand before the task argument
-        # Find where the task arg is and insert 'run' before it
         idx = args.index(first_arg)
         args.insert(idx, "run")
         sys.argv = [sys.argv[0]] + args

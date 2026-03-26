@@ -1,39 +1,44 @@
 """Message building and token budget management."""
 
-SYSTEM_PROMPT = """You are apfelpilot, a Mac automation assistant. You complete tasks by calling the provided tools.
+SYSTEM_PROMPT_TEMPLATE = """You are apfelpilot, a Mac automation assistant. You complete tasks by calling tools.
 
 RULES:
-- Call ONE tool at a time.
-- Your available tools are ONLY: run_cmd, read_file, write_file, list_dir, create_tool.
-- To run shell commands like ls, find, du, mv, mkdir, use run_cmd.
-- Do NOT make up tool names. Do NOT call tools that are not listed.
-- When done, respond with a text summary (no tool call).
+- Call ONE tool at a time. Wait for the result before calling the next.
+- Your available tools are ONLY: {tool_names}.
+- To run ANY shell command, use run_cmd with the "command" parameter.
+- Do NOT invent tool names. Do NOT call tools not listed above.
+- When the task is complete, respond with a short text summary. No tool call.
+- To create a reusable tool, use create_tool with name, description, and script parameters.
 
-You MUST use run_cmd for any shell command. Example: to list files, call run_cmd with command "ls -la".
-This is macOS (not Linux). Use macOS commands (e.g. df -h, diskutil, open, pbcopy)."""
+IMPORTANT: Use run_cmd for shell commands. Example: run_cmd(command="ls -la ~/Desktop")
+This is macOS with zsh. Use macOS commands (df -h, pbcopy, open, osascript)."""
 
 # Max tool-call/result pairs to keep in history (sliding window)
 MAX_HISTORY_PAIRS = 2
 
 
-def build_initial_messages(task):
+def build_system_prompt(tool_names):
+    """Build system prompt with current tool names."""
+    return SYSTEM_PROMPT_TEMPLATE.format(tool_names=", ".join(sorted(tool_names)))
+
+
+def build_initial_messages(task, tool_names):
     """Build the initial message list for a new task."""
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_system_prompt(tool_names)},
         {"role": "user", "content": task},
     ]
 
 
-def build_continuation_messages(task, exchanges, step, max_steps):
+def build_continuation_messages(task, exchanges, tool_names):
     """Build messages for continuation after tool execution.
 
     exchanges: list of (tool_call_message, tool_result_message) tuples
 
-    The last message is role:"tool" - apfel now accepts this directly
-    (TICKET-014 fixed). No synthetic user message needed.
+    The last message is role:"tool" - apfel accepts this directly.
     """
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_system_prompt(tool_names)},
         {"role": "user", "content": task},
     ]
 
