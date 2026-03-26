@@ -16,7 +16,7 @@ def log_step(task: str, step: int, tool: str, args: dict, result: str, duration_
         "task": task[:100],
         "step": step,
         "tool": tool,
-        "args": {k: str(v)[:200] for k, v in args.items()},
+        "args": {k: str(v)[:200] for k, v in args.items()} if isinstance(args, dict) else {"raw": str(args)[:200]},
         "result_chars": len(result),
         "duration_ms": duration_ms,
     }

@@ -16,7 +16,7 @@ This is macOS (not Linux). Use macOS commands (e.g. df -h, diskutil, open, pbcop
 MAX_HISTORY_PAIRS = 2
 
 
-def build_initial_messages(task: str) -> list:
+def build_initial_messages(task):
     """Build the initial message list for a new task."""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -24,15 +24,13 @@ def build_initial_messages(task: str) -> list:
     ]
 
 
-def build_continuation_messages(
-    task: str,
-    exchanges: list,
-    step: int,
-    max_steps: int,
-) -> list:
+def build_continuation_messages(task, exchanges, step, max_steps):
     """Build messages for continuation after tool execution.
 
     exchanges: list of (tool_call_message, tool_result_message) tuples
+
+    The last message is role:"tool" - apfel now accepts this directly
+    (TICKET-014 fixed). No synthetic user message needed.
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -45,13 +43,4 @@ def build_continuation_messages(
         messages.append(assistant_msg)
         messages.append(tool_msg)
 
-    # Continuation prompt (satisfies "last message must be user" constraint)
-    if step >= max_steps - 2:
-        cont = f"Step {step}/{max_steps}. Finish now - give your final answer."
-    elif step > max_steps // 2:
-        cont = f"Step {step}/{max_steps}. Continue, but wrap up soon."
-    else:
-        cont = "Continue with the task. Call a tool or give your final answer if done."
-
-    messages.append({"role": "user", "content": cont})
     return messages

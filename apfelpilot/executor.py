@@ -71,8 +71,15 @@ def truncate(text: str, max_chars: int = MAX_OUTPUT) -> str:
     return text[:max_chars] + f"\n... (truncated, {len(text)} chars total)"
 
 
-def execute_tool(name: str, args: dict, tools: dict, auto_confirm: bool = False, task: str = "") -> str:
+def execute_tool(name: str, args, tools: dict, auto_confirm: bool = False, task: str = "") -> str:
     """Execute a tool by name with given arguments. Returns output string."""
+    # Normalize args: if it's a string, wrap it as the primary parameter
+    if isinstance(args, str):
+        primary_params = {"run_cmd": "command", "read_file": "path", "write_file": "path", "list_dir": "path"}
+        param = primary_params.get(name, "value")
+        args = {param: args}
+    if not isinstance(args, dict):
+        args = {}
     if name == "run_cmd":
         return _run_cmd(args, auto_confirm)
     elif name == "read_file":
