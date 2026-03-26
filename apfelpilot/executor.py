@@ -97,7 +97,7 @@ def execute_tool(name: str, args, tools: dict, auto_confirm: bool = False, task:
 
 
 def _run_cmd(args: dict, auto_confirm: bool) -> str:
-    command = args.get("command") or args.get("cmd") or ""
+    command = args.get("command") or args.get("cmd") or args.get("value") or ""
     if not command:
         return "Error: no command provided"
 
@@ -134,7 +134,7 @@ def _run_cmd(args: dict, auto_confirm: bool) -> str:
 
 
 def _read_file(args: dict) -> str:
-    path = args.get("path") or args.get("file") or ""
+    path = args.get("path") or args.get("file") or args.get("file_path") or args.get("value") or ""
     if not path:
         return "Error: no path provided"
 
@@ -155,7 +155,7 @@ def _read_file(args: dict) -> str:
 
 
 def _write_file(args: dict, auto_confirm: bool) -> str:
-    path = args.get("path") or args.get("file") or ""
+    path = args.get("path") or args.get("file") or args.get("file_path") or args.get("value") or ""
     content = args.get("content") or ""
     if not path:
         return "Error: no path provided"
@@ -179,7 +179,10 @@ def _write_file(args: dict, auto_confirm: bool) -> str:
 
 
 def _list_dir(args: dict) -> str:
-    path = args.get("path") or args.get("directory") or args.get("dir") or "."
+    path = args.get("path") or args.get("directory") or args.get("dir") or args.get("value") or "."
+    if isinstance(path, list):
+        path = path[0] if path else "."
+    path = str(path)
     path = os.path.expanduser(path)
 
     try:
@@ -253,7 +256,21 @@ def _run_learned_tool(name: str, args: dict, tool_def: dict) -> str:
     meta = tool_def.get("_meta", {})
     tool_args = meta.get("args", [])
 
-    arg_values = [str(args.get(a, "")) for a in tool_args]
+    if tool_args:
+        # Map named args to positional - try exact match first, then any value
+        arg_values = []
+        for a in tool_args:
+            val = args.get(a, "")
+            if not val:
+                # Fuzzy: try any key that's not already consumed
+                for k, v in args.items():
+                    if v and str(v) not in arg_values:
+                        val = v
+                        break
+            arg_values.append(os.path.expanduser(str(val)))
+    else:
+        # No arg names defined - pass all values as positional args
+        arg_values = [os.path.expanduser(str(v)) for v in args.values() if v]
 
     try:
         result = subprocess.run(

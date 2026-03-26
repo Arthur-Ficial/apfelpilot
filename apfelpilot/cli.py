@@ -11,13 +11,15 @@ from apfelpilot import __version__
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--version", "-v", is_flag=True, help="Show version")
 @click.option("--interactive", "-i", is_flag=True, help="Interactive mode")
+@click.option("--loop", "-l", default=0, type=int, help="Loop mode: repeat task every N seconds")
 @click.pass_context
-def main(ctx, yes, version, interactive):
+def main(ctx, yes, version, interactive, loop):
     """apfelpilot - self-evolving Mac agent powered by apfel.
 
     \b
     Run a task:   apfelpilot "organize my Downloads"
     Interactive:  apfelpilot -i
+    Loop mode:    apfelpilot -l 60 "check disk space"
     List tools:   apfelpilot tools
     Show history: apfelpilot history
     """
@@ -27,6 +29,7 @@ def main(ctx, yes, version, interactive):
 
     ctx.ensure_object(dict)
     ctx.obj["yes"] = yes
+    ctx.obj["loop"] = loop
 
     if interactive:
         from apfelpilot.interactive import run_interactive
@@ -42,9 +45,25 @@ def main(ctx, yes, version, interactive):
 @click.pass_context
 def run_cmd(ctx, task):
     """Run a task."""
+    import time as _time
     from apfelpilot.loop import run_task
+
     yes = ctx.obj.get("yes", False) if ctx.obj else False
-    run_task(task, auto_confirm=yes)
+    loop_interval = ctx.obj.get("loop", 0) if ctx.obj else 0
+
+    if loop_interval > 0:
+        click.echo(f"\n  Loop mode: running every {loop_interval}s (Ctrl+C to stop)\n", err=True)
+        iteration = 0
+        try:
+            while True:
+                iteration += 1
+                click.echo(f"  --- iteration {iteration} ---", err=True)
+                run_task(task, auto_confirm=yes)
+                _time.sleep(loop_interval)
+        except KeyboardInterrupt:
+            click.echo(f"\n  Stopped after {iteration} iterations.", err=True)
+    else:
+        run_task(task, auto_confirm=yes)
 
 
 @main.command()
@@ -104,15 +123,22 @@ def entry_point():
     known = {"tools", "history", "run"}
     args = sys.argv[1:]
 
-    # Find first non-flag argument
+    # Find first non-flag argument (skip flag values like -l 60)
     first_arg = None
+    skip_next = False
     for a in args:
-        if not a.startswith("-"):
-            first_arg = a
-            break
+        if skip_next:
+            skip_next = False
+            continue
+        if a in ("-l", "--loop", "-n", "--last"):
+            skip_next = True  # next arg is a value, not a task
+            continue
+        if a.startswith("-"):
+            continue
+        first_arg = a
+        break
 
     if first_arg and first_arg not in known:
-        # Insert 'run' subcommand before the task argument
         idx = args.index(first_arg)
         args.insert(idx, "run")
         sys.argv = [sys.argv[0]] + args
