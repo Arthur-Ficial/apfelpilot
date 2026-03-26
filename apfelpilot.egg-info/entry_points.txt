@@ -1,0 +1,2 @@
+[console_scripts]
+apfelpilot = apfelpilot.cli:entry_point
