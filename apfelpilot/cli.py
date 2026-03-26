@@ -37,7 +37,9 @@ def main(ctx, yes, version, interactive, loop):
         return
 
     if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+        # No args = interactive mode
+        from apfelpilot.interactive import run_interactive
+        run_interactive(auto_confirm=yes)
 
 
 @main.command(name="run", hidden=True)

@@ -92,8 +92,8 @@ def run_task(task, auto_confirm=False, quiet=False):
     exchanges = []
 
     if not quiet:
-        print(f"\n  Task: {task}", file=sys.stderr)
-        print(f"  Tools: {', '.join(sorted(tool_names))}", file=sys.stderr)
+        print(f"\n  \033[36m>\033[0m {task}", file=sys.stderr)
+        print(f"  \033[90m{len(tool_names)} tools | max {MAX_STEPS} steps\033[0m", file=sys.stderr)
         print("", file=sys.stderr)
 
     for step in range(1, MAX_STEPS + 1):
@@ -105,15 +105,17 @@ def run_task(task, auto_confirm=False, quiet=False):
         try:
             response = chat_completion(messages, tool_defs)
         except RuntimeError as e:
-            msg = f"Error from apfel: {e}"
             if not quiet:
-                print(f"\n  {msg}", file=sys.stderr)
-            return msg
+                err_str = str(e)
+                if "guardrail" in err_str.lower() or "blocked" in err_str.lower():
+                    print(f"\n  \033[33mBlocked by Apple's safety filter. Try rephrasing.\033[0m\n", file=sys.stderr)
+                else:
+                    print(f"\n  \033[31mError: {e}\033[0m\n", file=sys.stderr)
+            return str(e)
         except Exception as e:
-            msg = f"Connection error: {e}"
             if not quiet:
-                print(f"\n  {msg}", file=sys.stderr)
-            return msg
+                print(f"\n  \033[31mConnection error: {e}\033[0m\n", file=sys.stderr)
+            return str(e)
 
         choice = response["choices"][0]
         finish_reason = choice.get("finish_reason", "stop")
@@ -164,15 +166,25 @@ def run_task(task, auto_confirm=False, quiet=False):
         if not tool_name:
             if content and '{"tool_calls"' not in content:
                 if not quiet:
-                    print(f"\n  Result:\n{content}\n")
+                    print(f"\n  \033[32m{content}\033[0m\n")
                 return content
             elif content:
                 if not quiet:
-                    print(f"\n  Model returned unparseable response.", file=sys.stderr)
-                return content
+                    print(f"\n  \033[90m(model returned malformed response, retrying...)\033[0m", file=sys.stderr)
+                # Don't return - let it retry in the loop
+                exchanges.append((
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": "That response was malformed. Please call a tool or give a text answer."}
+                ))
+                # But treat as done if we already got tool results
+                if len(exchanges) > 1:
+                    if not quiet:
+                        print(f"\n  \033[32m{content[:500]}\033[0m\n")
+                    return content
+                continue
             else:
                 if not quiet:
-                    print("\n  Model returned empty response.", file=sys.stderr)
+                    print("\n  \033[90m(empty response)\033[0m", file=sys.stderr)
                 return ""
 
         # Validate tool exists
@@ -189,9 +201,9 @@ def run_task(task, auto_confirm=False, quiet=False):
         # Display
         if not quiet:
             args_display = json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args)
-            if len(args_display) > 120:
-                args_display = args_display[:120] + "..."
-            print(f"  [{step}] {tool_name}({args_display})", file=sys.stderr)
+            if len(args_display) > 100:
+                args_display = args_display[:100] + "..."
+            print(f"  \033[33m[{step}]\033[0m {tool_name}({args_display})", file=sys.stderr)
 
         # Execute
         start = time.time()
@@ -201,10 +213,10 @@ def run_task(task, auto_confirm=False, quiet=False):
         log_step(task, step, tool_name, tool_args, result, duration_ms)
 
         if not quiet:
-            result_preview = result[:200].replace("\n", " ")
-            if len(result) > 200:
+            result_preview = result[:150].replace("\n", " ")
+            if len(result) > 150:
                 result_preview += "..."
-            print(f"       -> {result_preview}", file=sys.stderr)
+            print(f"      \033[90m-> {result_preview}\033[0m", file=sys.stderr)
 
         assistant_msg = {"role": "assistant", "content": None, "tool_calls": tool_calls}
         tool_msg = {"role": "tool", "tool_call_id": tool_id, "name": tool_name, "content": result}

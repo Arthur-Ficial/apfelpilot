@@ -1,20 +1,25 @@
 """Message building and token budget management."""
 
-SYSTEM_PROMPT_TEMPLATE = """You are apfelpilot, a Mac automation assistant. You complete tasks by calling tools.
+SYSTEM_PROMPT_TEMPLATE = """You are apfelpilot, a Mac automation assistant. You complete tasks by calling tools and evaluating results.
 
 RULES:
-- Call ONE tool at a time. Wait for the result before calling the next.
-- Your available tools are ONLY: {tool_names}.
+- Call ONE tool at a time. Check if it worked. If it failed, try a different approach.
+- Your tools are: {tool_names}.
 - To run ANY shell command, use run_cmd with the "command" parameter.
-- Do NOT invent tool names. Do NOT call tools not listed above.
-- When the task is complete, respond with a short text summary. No tool call.
-- To create a reusable tool, use create_tool with name, description, and script parameters.
+- Do NOT invent tool names. Use ONLY the tools listed above.
+- If a command fails or returns an error, analyze why and try to fix it.
+- When the task is fully complete, respond with a short summary.
 
-IMPORTANT: Use run_cmd for shell commands. Example: run_cmd(command="ls -la ~/Desktop")
-This is macOS with zsh. Use macOS commands (df -h, pbcopy, open, osascript)."""
+SELF-EVALUATION:
+- After each tool result, check: did it work? Is the output what I expected?
+- If not, adjust your approach. Try a different command or tool.
+- Never give up on the first failure. Debug and retry.
+
+This is macOS with zsh. Use: ls, find, grep, awk, sed, du, df, open, pbcopy, osascript.
+Use run_cmd for ALL shell commands. Example: run_cmd(command="ls -la ~/Desktop")"""
 
 # Max tool-call/result pairs to keep in history (sliding window)
-MAX_HISTORY_PAIRS = 2
+MAX_HISTORY_PAIRS = 3  # Increased for self-debugging context
 
 
 def build_system_prompt(tool_names):
@@ -31,18 +36,13 @@ def build_initial_messages(task, tool_names):
 
 
 def build_continuation_messages(task, exchanges, tool_names):
-    """Build messages for continuation after tool execution.
-
-    exchanges: list of (tool_call_message, tool_result_message) tuples
-
-    The last message is role:"tool" - apfel accepts this directly.
-    """
+    """Build messages for continuation after tool execution."""
     messages = [
         {"role": "system", "content": build_system_prompt(tool_names)},
         {"role": "user", "content": task},
     ]
 
-    # Keep only the last MAX_HISTORY_PAIRS exchanges
+    # Keep the last MAX_HISTORY_PAIRS exchanges for debugging context
     recent = exchanges[-MAX_HISTORY_PAIRS:]
     for assistant_msg, tool_msg in recent:
         messages.append(assistant_msg)

@@ -73,13 +73,24 @@ def truncate(text: str, max_chars: int = MAX_OUTPUT) -> str:
 
 def execute_tool(name: str, args, tools: dict, auto_confirm: bool = False, task: str = "") -> str:
     """Execute a tool by name with given arguments. Returns output string."""
-    # Normalize args: if it's a string, wrap it as the primary parameter
+    # Normalize args
     if isinstance(args, str):
         primary_params = {"run_cmd": "command", "read_file": "path", "write_file": "path", "list_dir": "path"}
         param = primary_params.get(name, "value")
         args = {param: args}
     if not isinstance(args, dict):
         args = {}
+
+    # Unwrap double-encoded JSON: {"value": "{\"path\": \"...\"}"} -> {"path": "..."}
+    if len(args) == 1 and "value" in args:
+        val = args["value"]
+        if isinstance(val, str) and val.startswith("{"):
+            try:
+                inner = json.loads(val)
+                if isinstance(inner, dict):
+                    args = inner
+            except (json.JSONDecodeError, ValueError):
+                pass
     if name == "run_cmd":
         return _run_cmd(args, auto_confirm)
     elif name == "read_file":
@@ -97,7 +108,22 @@ def execute_tool(name: str, args, tools: dict, auto_confirm: bool = False, task:
 
 
 def _run_cmd(args: dict, auto_confirm: bool) -> str:
-    command = args.get("command") or args.get("cmd") or args.get("value") or ""
+    command = args.get("command") or args.get("cmd") or ""
+    if not command:
+        # Handle {"value": "command=pwd"} or {"value": "pwd"}
+        raw = args.get("value") or ""
+        if raw.startswith("command="):
+            command = raw[len("command="):]
+        else:
+            command = raw
+    # Handle model sending a list instead of string: ['open', '-a', 'Chrome']
+    if isinstance(command, list):
+        command = " ".join(str(c) for c in command)
+    command = str(command).strip()
+    # Strip surrounding quotes if model wrapped the command
+    if (command.startswith("'") and command.endswith("'")) or \
+       (command.startswith('"') and command.endswith('"')):
+        command = command[1:-1]
     if not command:
         return "Error: no command provided"
 
