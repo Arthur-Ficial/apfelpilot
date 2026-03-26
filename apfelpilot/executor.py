@@ -120,9 +120,18 @@ def _run_cmd(args: dict, auto_confirm: bool) -> str:
     if isinstance(command, list):
         command = " ".join(str(c) for c in command)
     command = str(command).strip()
+    # Handle string that looks like a Python list: "['open', '-a', 'Chrome']"
+    if command.startswith("[") and command.endswith("]"):
+        try:
+            import ast
+            parsed = ast.literal_eval(command)
+            if isinstance(parsed, list):
+                command = " ".join(str(c) for c in parsed)
+        except (ValueError, SyntaxError):
+            pass
     # Strip surrounding quotes if model wrapped the command
-    if (command.startswith("'") and command.endswith("'")) or \
-       (command.startswith('"') and command.endswith('"')):
+    if len(command) > 2 and ((command.startswith("'") and command.endswith("'")) or \
+       (command.startswith('"') and command.endswith('"'))):
         command = command[1:-1]
     if not command:
         return "Error: no command provided"
@@ -152,7 +161,9 @@ def _run_cmd(args: dict, auto_confirm: bool) -> str:
             output += f"\nSTDERR: {result.stderr}"
         if result.returncode != 0:
             output += f"\nExit code: {result.returncode}"
-        return truncate(output) if output.strip() else "(no output)"
+        if not output.strip():
+            return "OK (exit 0, no output)" if result.returncode == 0 else f"(no output, exit code {result.returncode})"
+        return truncate(output)
     except subprocess.TimeoutExpired:
         return f"Error: command timed out after {TIMEOUT}s"
     except Exception as e:
